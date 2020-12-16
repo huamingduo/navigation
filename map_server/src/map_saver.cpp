@@ -29,11 +29,15 @@
  */
 
 #include <cstdio>
+#include <opencv2/opencv.hpp>
+
 #include "ros/ros.h"
 #include "ros/console.h"
 #include "nav_msgs/GetMap.h"
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "geometry_msgs/Quaternion.h"
+
+#include "common_pkg/map_srv.h"
 
 using namespace std;
 
@@ -44,20 +48,38 @@ class MapGenerator
 {
 
   public:
-    MapGenerator(const std::string& mapname, int threshold_occupied, int threshold_free)
+    MapGenerator(const std::string& mapname, int threshold_occupied = 100, int threshold_free = 0)
       : mapname_(mapname), saved_map_(false), threshold_occupied_(threshold_occupied), threshold_free_(threshold_free)
     {
       ros::NodeHandle n;
-      ROS_INFO("Waiting for the map");
       map_sub_ = n.subscribe("map", 1, &MapGenerator::mapCallback, this);
+      save_map_service_ = n.advertiseService("/save_map", &MapGenerator::SaveMapCallback, this);
     }
 
-    void mapCallback(const nav_msgs::OccupancyGridConstPtr& map)
+    bool SaveMapCallback(common_pkg::map_srv::Request& req, common_pkg::map_srv::Response& res) {
+      ROS_INFO("Waiting for the map");
+      if (req.path_name != "" && req.map_name != "") {
+        mapname_ = req.path_name + req.map_name;
+      }
+      res.success = SaveMap(map_);
+      if (res.success) {
+        res.message = "Successfully saved map.";
+      } else {
+        res.message = "Failed to save map.";
+      }
+      return res.success;
+    }
+
+    void mapCallback(const nav_msgs::OccupancyGridConstPtr& map) {
+      map_ = *map;
+    }
+
+    bool SaveMap(const nav_msgs::OccupancyGrid& map)
     {
       ROS_INFO("Received a %d X %d map @ %.3f m/pix",
-               map->info.width,
-               map->info.height,
-               map->info.resolution);
+               map.info.width,
+               map.info.height,
+               map.info.resolution);
 
 
       std::string mapdatafile = mapname_ + ".pgm";
@@ -66,25 +88,29 @@ class MapGenerator
       if (!out)
       {
         ROS_ERROR("Couldn't save map file to %s", mapdatafile.c_str());
-        return;
+        return false;
       }
 
       fprintf(out, "P5\n# CREATOR: map_saver.cpp %.3f m/pix\n%d %d\n255\n",
-              map->info.resolution, map->info.width, map->info.height);
-      for(unsigned int y = 0; y < map->info.height; y++) {
-        for(unsigned int x = 0; x < map->info.width; x++) {
-          unsigned int i = x + (map->info.height - y - 1) * map->info.width;
-          if (map->data[i] >= 0 && map->data[i] <= threshold_free_) { // [0,free)
+              map.info.resolution, map.info.width, map.info.height);
+      cv::Mat out_png{cv::Mat::zeros(map.info.height, map.info.width, CV_8U)};
+      for(unsigned int y = 0; y < map.info.height; ++y) {
+        for(unsigned int x = 0; x < map.info.width; ++x) {
+          unsigned int i = x + (map.info.height - y - 1) * map.info.width;
+          if (map.data[i] >= 0 && map.data[i] <= threshold_free_) { //occ [0,0.1)
             fputc(254, out);
-          } else if (map->data[i] >= threshold_occupied_) { // (occ,255]
+            out_png.at<char>(y, x) = 254;
+          } else if (map.data[i] <= 100 && map.data[i] >= threshold_occupied_) { //occ (0.65,1]
             fputc(000, out);
-          } else { //occ [0.25,0.65]
+            out_png.at<char>(y, x) = 0;
+          } else { //occ [0.1,0.65]
             fputc(205, out);
+            out_png.at<char>(y, x) = 205;
           }
         }
       }
-
       fclose(out);
+      cv::imwrite(mapname_ + ".png", out_png);
 
 
       std::string mapmetadatafile = mapname_ + ".yaml";
@@ -102,7 +128,7 @@ free_thresh: 0.196
 
        */
 
-      geometry_msgs::Quaternion orientation = map->info.origin.orientation;
+      geometry_msgs::Quaternion orientation = map.info.origin.orientation;
       tf2::Matrix3x3 mat(tf2::Quaternion(
         orientation.x,
         orientation.y,
@@ -113,16 +139,19 @@ free_thresh: 0.196
       mat.getEulerYPR(yaw, pitch, roll);
 
       fprintf(yaml, "image: %s\nresolution: %f\norigin: [%f, %f, %f]\nnegate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.196\n\n",
-              mapdatafile.c_str(), map->info.resolution, map->info.origin.position.x, map->info.origin.position.y, yaw);
+              (mapname_ + ".png").c_str(), map.info.resolution, map.info.origin.position.x, map.info.origin.position.y, yaw);
 
       fclose(yaml);
 
       ROS_INFO("Done\n");
       saved_map_ = true;
+      return true;
     }
 
     std::string mapname_;
     ros::Subscriber map_sub_;
+    ros::ServiceServer save_map_service_;
+    nav_msgs::OccupancyGrid map_;
     bool saved_map_;
     int threshold_occupied_;
     int threshold_free_;
@@ -137,8 +166,8 @@ int main(int argc, char** argv)
 {
   ros::init(argc, argv, "map_saver");
   std::string mapname = "map";
-  int threshold_occupied = 65;
-  int threshold_free = 25;
+  int threshold_occupied = 100;
+  int threshold_free = 0;
 
   for(int i=1; i<argc; i++)
   {
@@ -208,7 +237,7 @@ int main(int argc, char** argv)
 
   MapGenerator mg(mapname, threshold_occupied, threshold_free);
 
-  while(!mg.saved_map_ && ros::ok())
+  while(ros::ok())
     ros::spinOnce();
 
   return 0;
