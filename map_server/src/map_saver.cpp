@@ -61,8 +61,13 @@ class MapGenerator
       if (req.path_name != "" && req.map_name != "") {
         mapname_ = req.path_name + req.map_name;
       }
+      ros::NodeHandle n;
+      ros::ServiceClient save_map_client = n.serviceClient<common_pkg::map_srv>("/carto/save_map");
+      common_pkg::map_srv srv;
+      srv.request = req;
+      bool ret = save_map_client.call(srv);
       res.success = SaveMap(map_);
-      if (res.success) {
+      if (res.success && ret) {
         res.message = "Successfully saved map.";
       } else {
         res.message = "Failed to save map.";
