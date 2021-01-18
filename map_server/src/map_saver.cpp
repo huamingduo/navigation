@@ -51,9 +51,10 @@ class MapGenerator
     MapGenerator(const std::string& mapname, int threshold_occupied = 100, int threshold_free = 0)
       : mapname_(mapname), saved_map_(false), threshold_occupied_(threshold_occupied), threshold_free_(threshold_free)
     {
-      ros::NodeHandle n;
-      map_sub_ = n.subscribe("map", 1, &MapGenerator::mapCallback, this);
+      ros::NodeHandle n("~");
+      map_sub_ = n.subscribe("/map", 1, &MapGenerator::mapCallback, this);
       save_map_service_ = n.advertiseService("/save_map", &MapGenerator::SaveMapCallback, this);
+      n.param<std::string>("mapping_method", mapping_method_, "gmapping");
     }
 
     bool SaveMapCallback(common_pkg::map_srv::Request& req, common_pkg::map_srv::Response& res) {
@@ -62,12 +63,18 @@ class MapGenerator
         mapname_ = req.path_name + req.map_name;
       }
       ros::NodeHandle n;
-      ros::ServiceClient save_map_client = n.serviceClient<common_pkg::map_srv>("/carto/save_map");
-      common_pkg::map_srv srv;
-      srv.request = req;
-      bool ret = save_map_client.call(srv);
-      res.success = SaveMap(map_);
-      if (res.success && ret) {
+      if (mapping_method_ == "cartographer") {
+        ros::ServiceClient save_map_client = n.serviceClient<common_pkg::map_srv>("/carto/save_map");
+        common_pkg::map_srv srv;
+        srv.request = req;
+        res.success = save_map_client.call(srv);
+      } else if (mapping_method_ == "gmapping") {
+        res.success = SaveMap(map_);
+      } else {
+        res.success = false;
+      }
+
+      if (res.success) {
         res.message = "Successfully saved map.";
       } else {
         res.message = "Failed to save map.";
@@ -153,6 +160,7 @@ free_thresh: 0.196
       return true;
     }
 
+    std::string mapping_method_;
     std::string mapname_;
     ros::Subscriber map_sub_;
     ros::ServiceServer save_map_service_;
