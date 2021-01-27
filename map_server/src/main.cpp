@@ -54,6 +54,7 @@
 #include "nav_msgs/OccupancyGrid.h"
 #include "nav_msgs/SetMap.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include "std_msgs/String.h"
 
 #ifdef HAVE_YAMLCPP_GT_0_5_0
 // The >> operator disappeared in yaml-cpp 0.5, so this function is
@@ -81,6 +82,7 @@ class MapServer
       metadata_pub = n.advertise<nav_msgs::MapMetaData>("map_metadata", 1, true);
       map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1, true);
       virtual_map_pub_ = n.advertise<nav_msgs::OccupancyGrid>("virtual_map", 1, true);
+      load_map_status_pub_ = n.advertise<std_msgs::String>("/load_map_status", 1, true);
       if (!LoadMapFromYaml(fname, res) || !LoadMapFromYaml(fname, res, true)) {
         ROS_ERROR("[map_server] load map failed");
         exit(-1);
@@ -276,16 +278,25 @@ class MapServer
         ROS_INFO("Use the original map as the virtual map.");
         LoadMapFromYaml(req.path_name + req.map_name + ".yaml", 0.0, true);
       }
-      
-      return res.success && ret;
+
+      if (ret) {
+        std_msgs::String msg;
+        msg.data = "map/" + req.map_name;
+        load_map_status_pub_.publish(msg);
+      }
+      return true;
     }
 
     bool SetInitPoseCallback(common_pkg::pose_init_srv::Request& req, common_pkg::pose_init_srv::Response& res) {
       init_pose_ = req.init_pose;
-      res.success = true;
       ROS_INFO("Successfully set initial pose");
-      bool ret = SetAmclMap();
-      return res.success && ret;
+      res.success = SetAmclMap();
+      if (res.success) {
+        res.message = "Successfully set initial pose";
+      } else {
+        res.message = "Failed to set initial pose";
+      }
+      return true;
     }
 
     bool SetAmclMap() {
@@ -315,13 +326,13 @@ class MapServer
         ROS_ERROR("The map has not been correctly set.");
         res.message.push_back("The map has not been correctly set.");
         res.success = false;
-        return res.success;
+        return true;
       }
       if (req.markers.empty()) {
         ROS_WARN("Virtual wall data is empty.");
         res.message.push_back("Virtual wall data is empty.");
         res.success = false;
-        return res.success;
+        return true;
       }
 
       for (auto& marker : req.markers) {
@@ -390,7 +401,7 @@ class MapServer
       }
       virtual_map_pub_.publish(msg);
 
-      return res.success;
+      return true;
     }
 
     cv::Point PointToPixel(const geometry_msgs::Point& point) {
@@ -401,6 +412,7 @@ class MapServer
     ros::NodeHandle n;
     ros::Publisher map_pub;
     ros::Publisher virtual_map_pub_;
+    ros::Publisher load_map_status_pub_;
     ros::Publisher metadata_pub;
     ros::ServiceServer service;
     ros::ServiceServer set_virtual_wall_service_;
