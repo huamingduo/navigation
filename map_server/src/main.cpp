@@ -74,6 +74,15 @@ class MapServer
       init_pose_(geometry_msgs::PoseWithCovarianceStamped())
     {
       ROS_INFO("[map_server] Initializing map_server node.");
+			init_pose_.header.frame_id = "map";
+			init_pose_.pose.pose.position.x = 0.;
+			init_pose_.pose.pose.position.y = 0.;
+			init_pose_.pose.pose.position.z = 0.;
+			init_pose_.pose.pose.orientation.x = 0.;
+			init_pose_.pose.pose.orientation.y = 0.;
+			init_pose_.pose.pose.orientation.z = 0.;
+			init_pose_.pose.pose.orientation.w = 1.;
+			
       service = n.advertiseService("static_map", &MapServer::mapCallback, this);
       set_virtual_wall_service_ = n.advertiseService("/set_virtual_walls", &MapServer::HandleVirtualWalls, this);
       load_map_service_ = n.advertiseService("/load_map", &MapServer::LoadMapCallback, this);
