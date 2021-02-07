@@ -82,6 +82,14 @@ class MapServer
 			init_pose_.pose.pose.orientation.y = 0.;
 			init_pose_.pose.pose.orientation.z = 0.;
 			init_pose_.pose.pose.orientation.w = 1.;
+      init_pose_.pose.covariance = {
+        1., 0., 0., 0., 0., 0.,
+        0., 1., 0., 0., 0., 0.,
+        0., 0., 1., 0., 0., 0.,
+        0., 0., 0., 1., 0., 0.,
+        0., 0., 0., 0., 1., 0.,
+        0., 0., 0., 0., 0., 1.
+      };
 			
       service = n.advertiseService("static_map", &MapServer::mapCallback, this);
       set_virtual_wall_service_ = n.advertiseService("/set_virtual_walls", &MapServer::HandleVirtualWalls, this);
