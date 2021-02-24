@@ -23,10 +23,14 @@ find_package(catkin REQUIRED
     tf2_geometry_msgs
     tf2_msgs
     tf2_ros
+    common_pkg
 )
 
 find_package(Boost REQUIRED)
+find_package(Eigen3 REQUIRED)
 
+find_package(cartographer REQUIRED)
+find_package(VTK REQUIRED)
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
     cfg/AMCL.cfg
@@ -45,12 +49,17 @@ catkin_package(
     tf2
     tf2_msgs
     tf2_ros
+    common_pkg
   INCLUDE_DIRS include
   LIBRARIES amcl_sensors amcl_map amcl_pf
 )
 
 include_directories(include)
-include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${Eigen3_INCLUDE_DIRS}
+)
 include_directories(src/include)
 
 check_include_file(unistd.h HAVE_UNISTD_H)
@@ -86,13 +95,20 @@ target_link_libraries(amcl_sensors amcl_map amcl_pf)
 
 
 add_executable(amcl
-                       src/amcl_node.cpp)
+  src/amcl_node.cc
+  src/amcl.cc
+  src/scan_matching/real_time_correlative_scan_matcher_2d.cc
+  src/scan_matching/correlative_scan_matcher_2d.cc
+)
 add_dependencies(amcl ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(amcl
     amcl_sensors amcl_map amcl_pf
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
+    ${Eigen3_LIBRARIES}
+    cartographer
+    glog
 )
 
 install(TARGETS

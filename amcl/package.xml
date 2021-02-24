@@ -40,6 +40,9 @@
     <depend>tf2_msgs</depend>
     <depend>tf2_ros</depend>
 
+    <depend>cartographer</depend>
+    <depend>common_pkg</depend>
+
     <test_depend>map_server</test_depend>
     <test_depend>rostest</test_depend>
     <test_depend>python_orocos_kdl</test_depend>
