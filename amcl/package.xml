@@ -41,6 +41,7 @@
     <depend>tf2_ros</depend>
 
     <depend>cartographer</depend>
+    <depend>cartographer_ros</depend>
     <depend>common_pkg</depend>
 
     <test_depend>map_server</test_depend>

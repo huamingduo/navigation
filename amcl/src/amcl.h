@@ -268,10 +268,8 @@ class AmclNode {
 
 
     // custom add-ons
-    bool HandleLocalLocalization(common_pkg::Relocalize::Request& req,
-      common_pkg::Relocalize::Response& res);
-    ros::ServiceServer local_localization_server_;
     cartographer::mapping::scan_matching::RealTimeCorrelativeScanMatcher2D real_time_correlative_scan_matcher_;
+    sensor_msgs::LaserScan recent_laser_scan_;
 };
 
 } // namespace amcl

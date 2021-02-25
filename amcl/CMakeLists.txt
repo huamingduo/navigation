@@ -24,6 +24,7 @@ find_package(catkin REQUIRED
     tf2_msgs
     tf2_ros
     common_pkg
+    cartographer_ros
 )
 
 find_package(Boost REQUIRED)

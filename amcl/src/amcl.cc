@@ -1,5 +1,7 @@
 #include "amcl.h"
 #include "cartographer/io/probability_grid_points_processor.h"
+#include "cartographer/sensor/rangefinder_point.h"
+#include "cartographer_ros/msg_conversion.h"
 
 using namespace cartographer;
 // using namespace cartographer::mapping;
@@ -139,8 +141,6 @@ AmclNode::AmclNode(const proto::RealTimeCorrelativeScanMatcherOptions& options) 
   global_loc_srv_ = nh_.advertiseService("global_localization", 
 					 &AmclNode::globalLocalizationCallback,
                                          this);
-  local_localization_server_ = nh_.advertiseService("local_localization",
-    &AmclNode::HandleLocalLocalization, this);
   nomotion_update_srv_= nh_.advertiseService("request_nomotion_update", &AmclNode::nomotionUpdateCallback, this);
   set_map_srv_= nh_.advertiseService("set_map", &AmclNode::setMapCallback, this);
 
@@ -745,22 +745,6 @@ AmclNode::uniformPoseGenerator(void* arg)
   return p;
 }
 
-bool AmclNode::HandleLocalLocalization(common_pkg::Relocalize::Request& req,
-    common_pkg::Relocalize::Response& res) {
-  const transform::Rigid2d pose_prediction;
-  transform::Rigid2d initial_ceres_pose = pose_prediction;
-  const sensor::PointCloud filtered_gravity_aligned_point_cloud;
-  if (filtered_gravity_aligned_point_cloud.empty()) {
-    return false;
-  }
-  cartographer::mapping::ValueConversionTables conversion_tables;
-  auto grid = cartographer::io::CreateProbabilityGrid(0.5, &conversion_tables);
-  const double score = real_time_correlative_scan_matcher_.Match(
-        pose_prediction, filtered_gravity_aligned_point_cloud,
-        grid, &initial_ceres_pose);
-  return true;
-}
-
 bool
 AmclNode::globalLocalizationCallback(std_srvs::Empty::Request& req,
                                      std_srvs::Empty::Response& res)
@@ -800,6 +784,7 @@ AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 {
+  recent_laser_scan_ = *laser_scan;
   std::string laser_scan_frame_id = stripSlash(laser_scan->header.frame_id);
   last_laser_received_ts_ = ros::Time::now();
   if( map_ == NULL ) {
@@ -1192,9 +1177,47 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   diagnosic_updater_.update();
 }
 
-void
-AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg)
-{
+void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg) {
+  tf2::Quaternion quaternion{msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w};
+  const transform::Rigid2d pose_prediction{transform::Rigid2d(
+    Eigen::Vector2d(msg->pose.pose.position.x, msg->pose.pose.position.y),
+    Eigen::Rotation2D<double>(quaternion.getAngle()))};
+  transform::Rigid2d initial_ceres_pose = pose_prediction;
+
+  cartographer::sensor::PointCloudWithIntensities point_cloud;
+  cartographer::common::Time time;
+  std::tie(point_cloud, time) = cartographer_ros::ToPointCloudWithIntensities(recent_laser_scan_);
+  std::vector<cartographer::sensor::RangefinderPoint> pc;
+  for (const auto& point : point_cloud.points) {
+    cartographer::sensor::RangefinderPoint p;
+    p.position = point.position;
+    pc.push_back(p);
+  }
+  const sensor::PointCloud filtered_gravity_aligned_point_cloud{pc};
+  if (filtered_gravity_aligned_point_cloud.empty()) {
+    return;
+  }
+  cartographer::mapping::ValueConversionTables conversion_tables;
+  auto grid = cartographer::io::CreateProbabilityGrid(0.5, &conversion_tables);
+  const double score = real_time_correlative_scan_matcher_.Match(
+        pose_prediction, filtered_gravity_aligned_point_cloud,
+        grid, &initial_ceres_pose);
+
+  geometry_msgs::PoseWithCovarianceStamped init_pose;
+  init_pose.header.stamp = msg->header.stamp;
+  init_pose.header.frame_id = msg->header.frame_id;
+  init_pose.pose.covariance = msg->pose.covariance;
+  if (score > 0.6) {
+    init_pose.pose.pose.position.x = 0.;
+    init_pose.pose.pose.position.y = 0.;
+    init_pose.pose.pose.position.z = 0.;
+    init_pose.pose.pose.orientation.x = 0.;
+    init_pose.pose.pose.orientation.y = 0.;
+    init_pose.pose.pose.orientation.z = 0.;
+    init_pose.pose.pose.orientation.w = 1.;
+  } else {
+    init_pose.pose.pose = msg->pose.pose;
+  }
   handleInitialPoseMessage(*msg);
 }
 
