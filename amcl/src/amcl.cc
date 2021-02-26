@@ -528,7 +528,7 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
   if( first_map_only_ && first_map_received_ ) {
     return;
   }
-
+  recent_occupancy_grid_ = *msg;
   handleMapMessage( *msg );
 
   first_map_received_ = true;
@@ -1178,12 +1178,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 }
 
 void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg) {
+  // convert pose
+  ROS_INFO("Processing initial pose");
   tf2::Quaternion quaternion{msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w};
   const transform::Rigid2d pose_prediction{transform::Rigid2d(
     Eigen::Vector2d(msg->pose.pose.position.x, msg->pose.pose.position.y),
     Eigen::Rotation2D<double>(quaternion.getAngle()))};
   transform::Rigid2d initial_ceres_pose = pose_prediction;
 
+  // convert laser scan
+  ROS_INFO("Processing laser scan");
   cartographer::sensor::PointCloudWithIntensities point_cloud;
   cartographer::common::Time time;
   std::tie(point_cloud, time) = cartographer_ros::ToPointCloudWithIntensities(recent_laser_scan_);
@@ -1195,30 +1199,76 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
   }
   const sensor::PointCloud filtered_gravity_aligned_point_cloud{pc};
   if (filtered_gravity_aligned_point_cloud.empty()) {
+    ROS_WARN("No data in laser scan");
+    handleInitialPoseMessage(*msg);
     return;
   }
+
+  // convert map
+  ROS_INFO("Processing local map");
+  nav_msgs::OccupancyGrid local_map;
+  local_map.header.frame_id = "base_link";
+  local_map.info.resolution = recent_occupancy_grid_.info.resolution;
+  local_map.info.width = static_cast<unsigned int>(std::ceil(6./local_map.info.resolution));
+  local_map.info.height = static_cast<unsigned int>(std::ceil(6./local_map.info.resolution));
+  local_map.info.origin.position.x = -3.;
+  local_map.info.origin.position.y = 3.;
+  local_map.info.origin.position.z = 0.;
+  local_map.info.origin.orientation.x = 0.;
+  local_map.info.origin.orientation.y = 0.;
+  local_map.info.origin.orientation.z = 0.;
+  local_map.info.origin.orientation.w = 1.;
+
+  for (int i=0; i<local_map.info.width; ++i) {
+    for (int j=0; j<local_map.info.height; ++j) {
+      Eigen::Vector2d coord, local_coord;
+      local_coord[0] = local_map.info.origin.position.x + i*local_map.info.resolution;
+      local_coord[1] = local_map.info.origin.position.y - j*local_map.info.resolution;
+      coord = pose_prediction * local_coord;
+      uint x{static_cast<uint>(std::round((coord[0] - recent_occupancy_grid_.info.origin.position.x) / recent_occupancy_grid_.info.resolution))};
+      uint y{static_cast<uint>(std::round((recent_occupancy_grid_.info.origin.position.y - coord[1]) / recent_occupancy_grid_.info.resolution))};
+      
+      local_map.data.push_back(x + y * recent_occupancy_grid_.info.width);
+    }
+  }
+
+  ros::NodeHandle n;
+  ros::Publisher debug = n.advertise<nav_msgs::OccupancyGrid>("/local_map_debug", 1);
+  debug.publish(local_map);
+
+
   cartographer::mapping::ValueConversionTables conversion_tables;
   auto grid = cartographer::io::CreateProbabilityGrid(0.5, &conversion_tables);
+
+
+  // apply algorithm
+  ROS_INFO("Applying correlative matching algorithm");
   const double score = real_time_correlative_scan_matcher_.Match(
         pose_prediction, filtered_gravity_aligned_point_cloud,
         grid, &initial_ceres_pose);
 
+  // output result
+  ROS_INFO("Applying result");
   geometry_msgs::PoseWithCovarianceStamped init_pose;
   init_pose.header.stamp = msg->header.stamp;
   init_pose.header.frame_id = msg->header.frame_id;
   init_pose.pose.covariance = msg->pose.covariance;
   if (score > 0.6) {
-    init_pose.pose.pose.position.x = 0.;
-    init_pose.pose.pose.position.y = 0.;
+    ROS_INFO("Relocalize succeeded");
+    tf2::Quaternion q;
+    q.setRPY(0., 0., initial_ceres_pose.rotation().angle());
+    init_pose.pose.pose.position.x = initial_ceres_pose.translation()[0];
+    init_pose.pose.pose.position.y = initial_ceres_pose.translation()[1];
     init_pose.pose.pose.position.z = 0.;
-    init_pose.pose.pose.orientation.x = 0.;
-    init_pose.pose.pose.orientation.y = 0.;
-    init_pose.pose.pose.orientation.z = 0.;
-    init_pose.pose.pose.orientation.w = 1.;
+    init_pose.pose.pose.orientation.x = q.x();
+    init_pose.pose.pose.orientation.y = q.y();
+    init_pose.pose.pose.orientation.z = q.z();
+    init_pose.pose.pose.orientation.w = q.w();
   } else {
+    ROS_INFO("Relocalize failed");
     init_pose.pose.pose = msg->pose.pose;
   }
-  handleInitialPoseMessage(*msg);
+  handleInitialPoseMessage(init_pose);
 }
 
 void

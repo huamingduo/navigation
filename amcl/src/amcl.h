@@ -270,6 +270,7 @@ class AmclNode {
     // custom add-ons
     cartographer::mapping::scan_matching::RealTimeCorrelativeScanMatcher2D real_time_correlative_scan_matcher_;
     sensor_msgs::LaserScan recent_laser_scan_;
+    nav_msgs::OccupancyGrid recent_occupancy_grid_;
 };
 
 } // namespace amcl

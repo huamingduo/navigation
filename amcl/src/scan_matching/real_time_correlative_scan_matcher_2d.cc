@@ -74,6 +74,22 @@ float ComputeCandidateScore(const ProbabilityGrid& probability_grid,
   return candidate_score;
 }
 
+float ComputeCandidateScore(const nav_msgs::OccupancyGrid& probability_grid,
+                            const DiscreteScan2D& discrete_scan,
+                            int x_index_offset, int y_index_offset) {
+  float candidate_score = 0.f;
+  for (const Eigen::Array2i& xy_index : discrete_scan) {
+    const Eigen::Array2i proposed_xy_index(xy_index.x() + x_index_offset,
+                                           xy_index.y() + y_index_offset);
+    const float probability = 0.1;
+        // probability_grid.GetProbability(proposed_xy_index);
+    candidate_score += probability;
+  }
+  candidate_score /= static_cast<float>(discrete_scan.size());
+  CHECK_GT(candidate_score, 0.f);
+  return candidate_score;
+}
+
 }  // namespace
 
 RealTimeCorrelativeScanMatcher2D::RealTimeCorrelativeScanMatcher2D(
@@ -131,8 +147,45 @@ double RealTimeCorrelativeScanMatcher2D::Match(
 
   const std::vector<sensor::PointCloud> rotated_scans =
       GenerateRotatedScans(rotated_point_cloud, search_parameters);
+  
   const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans(
       grid.limits(), rotated_scans,
+      Eigen::Translation2f(initial_pose_estimate.translation().x(),
+                           initial_pose_estimate.translation().y()));
+  std::vector<Candidate2D> candidates =
+      GenerateExhaustiveSearchCandidates(search_parameters);
+  ScoreCandidates(grid, discrete_scans, search_parameters, &candidates);
+  const Candidate2D& best_candidate =
+      *std::max_element(candidates.begin(), candidates.end());
+  *pose_estimate = transform::Rigid2d(
+      {initial_pose_estimate.translation().x() + best_candidate.x,
+       initial_pose_estimate.translation().y() + best_candidate.y},
+      initial_rotation * Eigen::Rotation2Dd(best_candidate.orientation));
+  return best_candidate.score;
+}
+
+double RealTimeCorrelativeScanMatcher2D::Match(
+    const transform::Rigid2d& initial_pose_estimate,
+    const sensor::PointCloud& point_cloud, const nav_msgs::OccupancyGrid& grid,
+    transform::Rigid2d* pose_estimate) const {
+  CHECK(pose_estimate != nullptr);
+
+  const Eigen::Rotation2Dd initial_rotation = initial_pose_estimate.rotation();
+  const sensor::PointCloud rotated_point_cloud = sensor::TransformPointCloud(
+      point_cloud,
+      transform::Rigid3f::Rotation(Eigen::AngleAxisf(
+          initial_rotation.cast<float>().angle(), Eigen::Vector3f::UnitZ())));
+  const SearchParameters search_parameters(
+      options_.linear_search_window(), options_.angular_search_window(),
+      rotated_point_cloud, grid.info.resolution);
+
+  const std::vector<sensor::PointCloud> rotated_scans =
+      GenerateRotatedScans(rotated_point_cloud, search_parameters);
+  const MapLimits limits{grid.info.resolution,
+      Eigen::Vector2d(grid.info.origin.position.x + 6, grid.info.origin.position.y - 6),
+      CellLimits(grid.info.height, grid.info.width)};
+  const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans(
+      limits, rotated_scans,
       Eigen::Translation2f(initial_pose_estimate.translation().x(),
                            initial_pose_estimate.translation().y()));
   std::vector<Candidate2D> candidates =
@@ -174,6 +227,23 @@ void RealTimeCorrelativeScanMatcher2D::ScoreCandidates(
                                    options_.rotation_delta_cost_weight()));
   }
 }
+
+  void RealTimeCorrelativeScanMatcher2D::ScoreCandidates(const nav_msgs::OccupancyGrid& grid,
+                       const std::vector<DiscreteScan2D>& discrete_scans,
+                       const SearchParameters& search_parameters,
+                       std::vector<Candidate2D>* candidates) const {
+    for (Candidate2D& candidate : *candidates) {
+      candidate.score = ComputeCandidateScore(
+          grid,
+          discrete_scans[candidate.scan_index], candidate.x_index_offset,
+          candidate.y_index_offset);
+      candidate.score *=
+        std::exp(-common::Pow2(std::hypot(candidate.x, candidate.y) *
+                                   options_.translation_delta_cost_weight() +
+                               std::abs(candidate.orientation) *
+                                   options_.rotation_delta_cost_weight()));
+    }
+  }
 
 }  // namespace scan_matching
 }  // namespace mapping

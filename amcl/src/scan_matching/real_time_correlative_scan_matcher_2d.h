@@ -45,6 +45,8 @@
 #include "correlative_scan_matcher_2d.h"
 #include "cartographer/mapping/proto/scan_matching/real_time_correlative_scan_matcher_options.pb.h"
 
+#include <nav_msgs/OccupancyGrid.h>
+
 namespace cartographer {
 namespace mapping {
 namespace scan_matching {
@@ -67,12 +69,20 @@ class RealTimeCorrelativeScanMatcher2D {
                const sensor::PointCloud& point_cloud, const Grid2D& grid,
                transform::Rigid2d* pose_estimate) const;
 
+  double Match(const transform::Rigid2d& initial_pose_estimate,
+               const sensor::PointCloud& point_cloud, const nav_msgs::OccupancyGrid& grid,
+               transform::Rigid2d* pose_estimate) const;
+
   // Computes the score for each Candidate2D in a collection. The cost is
   // computed as the sum of probabilities or normalized TSD values, different
   // from the Ceres CostFunctions: http://ceres-solver.org/modeling.html
   //
   // Visible for testing.
   void ScoreCandidates(const Grid2D& grid,
+                       const std::vector<DiscreteScan2D>& discrete_scans,
+                       const SearchParameters& search_parameters,
+                       std::vector<Candidate2D>* candidates) const;
+  void ScoreCandidates(const nav_msgs::OccupancyGrid& grid,
                        const std::vector<DiscreteScan2D>& discrete_scans,
                        const SearchParameters& search_parameters,
                        std::vector<Candidate2D>* candidates) const;
