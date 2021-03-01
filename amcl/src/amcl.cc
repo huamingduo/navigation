@@ -1236,16 +1236,11 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
   ros::Publisher debug = n.advertise<nav_msgs::OccupancyGrid>("/local_map_debug", 1);
   debug.publish(local_map);
 
-
-  cartographer::mapping::ValueConversionTables conversion_tables;
-  auto grid = cartographer::io::CreateProbabilityGrid(0.5, &conversion_tables);
-
-
   // apply algorithm
   ROS_INFO("Applying correlative matching algorithm");
   const double score = real_time_correlative_scan_matcher_.Match(
         pose_prediction, filtered_gravity_aligned_point_cloud,
-        grid, &initial_ceres_pose);
+        local_map, &initial_ceres_pose);
 
   // output result
   ROS_INFO("Applying result");
