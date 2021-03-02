@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh;
 
   proto::RealTimeCorrelativeScanMatcherOptions options; // TODO: a function for reading params from a file
-  options.set_linear_search_window(0.1);
+  options.set_linear_search_window(0.2);
   options.set_angular_search_window(20./180.*PI);
   options.set_translation_delta_cost_weight(1e-1);
   options.set_rotation_delta_cost_weight(1e-1);

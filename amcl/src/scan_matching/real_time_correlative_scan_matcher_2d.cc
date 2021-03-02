@@ -74,6 +74,17 @@ float ComputeCandidateScore(const ProbabilityGrid& probability_grid,
   return candidate_score;
 }
 
+float GetProbabilityFromGrid(const nav_msgs::OccupancyGrid& grid, const int& proposed_flat_index) {
+  if (proposed_flat_index > grid.info.width * grid.info.height || proposed_flat_index < 0) {
+    return 0.1;
+  }
+  const int cell_value{grid.data[proposed_flat_index]};
+  if (cell_value == -1) {
+    return 0.;
+  }
+  return cell_value / 101. * 0.8 + 0.1;
+}
+
 float ComputeCandidateScore(const nav_msgs::OccupancyGrid& probability_grid,
                             const DiscreteScan2D& discrete_scan,
                             int x_index_offset, int y_index_offset) {
@@ -81,8 +92,8 @@ float ComputeCandidateScore(const nav_msgs::OccupancyGrid& probability_grid,
   for (const Eigen::Array2i& xy_index : discrete_scan) {
     const Eigen::Array2i proposed_xy_index(xy_index.x() + x_index_offset,
                                            xy_index.y() + y_index_offset);
-    const float probability = 0.1;
-        // probability_grid.GetProbability(proposed_xy_index);
+    const int proposed_flat_index = proposed_xy_index.x() + proposed_xy_index.y() * probability_grid.info.width;
+    const float probability = GetProbabilityFromGrid(probability_grid, proposed_flat_index);
     candidate_score += probability;
   }
   candidate_score /= static_cast<float>(discrete_scan.size());
