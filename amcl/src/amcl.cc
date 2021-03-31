@@ -528,7 +528,6 @@ void
 AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 {
   boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
-
   ROS_INFO("Received a %d X %d map @ %.3f m/pix\n",
            msg.info.width,
            msg.info.height,
@@ -1167,7 +1166,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 }
 
 void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg) {
-    handleInitialPoseMessage(*msg);
+  handleInitialPoseMessage(*msg);
 }
 
 void

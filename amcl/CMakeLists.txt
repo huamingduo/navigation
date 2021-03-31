@@ -23,9 +23,11 @@ find_package(catkin REQUIRED
     tf2_geometry_msgs
     tf2_msgs
     tf2_ros
+    common_pkg
 )
 
 find_package(Boost REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
@@ -45,12 +47,17 @@ catkin_package(
     tf2
     tf2_msgs
     tf2_ros
+    common_pkg
   INCLUDE_DIRS include
   LIBRARIES amcl_sensors amcl_map amcl_pf
 )
 
 include_directories(include)
-include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${Eigen3_INCLUDE_DIRS}
+)
 include_directories(src/include)
 
 check_include_file(unistd.h HAVE_UNISTD_H)
@@ -95,6 +102,7 @@ target_link_libraries(amcl
     amcl_sensors amcl_map amcl_pf
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
+    ${Eigen3_LIBRARIES}
 )
 
 install(TARGETS

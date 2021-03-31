@@ -76,6 +76,11 @@
 // For monitoring the estimator
 #include <diagnostic_updater/diagnostic_updater.h>
 
+
+// Custom header files
+#include "common_pkg/Relocalize.h"
+#include "scan_matching/real_time_correlative_scan_matcher_2d.h"
+
 #define NEW_UNIFORM_SAMPLING 1
 
 using namespace amcl;
