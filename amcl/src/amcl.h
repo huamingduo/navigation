@@ -56,6 +56,9 @@
 // For monitoring the estimator
 #include <diagnostic_updater/diagnostic_updater.h>
 
+// custom includes
+#include "scan_matching/scan_matcher.h"
+
 
 #define NEW_UNIFORM_SAMPLING 1
 
@@ -102,7 +105,7 @@ inline std::string stripSlash(const std::string& in) {
 
 class AmclNode {
   public:
-    AmclNode();
+    AmclNode(const scan_matching::Option& option);
     ~AmclNode();
 
     /**
@@ -258,6 +261,10 @@ class AmclNode {
     laser_model_t laser_model_type_;
     bool tf_broadcast_;
     bool selective_resampling_;
+
+    // custom add-ons
+    sensor_msgs::LaserScan last_laser_msg;
+    scan_matching::ScanMatcher matcher_;
 };
 
 } // namespace amcl

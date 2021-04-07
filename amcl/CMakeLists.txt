@@ -28,6 +28,7 @@ find_package(catkin REQUIRED
 
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
@@ -95,6 +96,7 @@ target_link_libraries(amcl_sensors amcl_map amcl_pf)
 add_executable(amcl
 	src/amcl_node.cc
 	src/amcl.cc
+  src/scan_matching/scan_matcher.cc
 )
 add_dependencies(amcl ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
@@ -103,6 +105,7 @@ target_link_libraries(amcl
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
     ${Eigen3_LIBRARIES}
+    ${OpenCV_LIBRARIES}
 )
 
 install(TARGETS

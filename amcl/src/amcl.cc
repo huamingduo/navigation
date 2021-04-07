@@ -1,8 +1,9 @@
 #include "amcl.h"
+#include "opencv2/opencv.hpp"
 
 namespace amcl {
 
-AmclNode::AmclNode() :
+AmclNode::AmclNode(const scan_matching::Option& option) :
         sent_first_transform_(false),
         latest_tf_valid_(false),
         map_(NULL),
@@ -13,7 +14,8 @@ AmclNode::AmclNode() :
 	      private_nh_("~"),
         initial_pose_hyp_(NULL),
         first_map_received_(false),
-        first_reconfigure_call_(true)
+        first_reconfigure_call_(true),
+        matcher_(option)
 {
   boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
@@ -610,6 +612,25 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   // try to apply the initial pose now that the map has arrived.
   applyInitialPose();
 
+  cv::Mat image{static_cast<int>(msg.info.height), static_cast<int>(msg.info.width), CV_8UC1};
+  for (int i=0; i<msg.info.height; ++i) {
+    for (int j=0; j<msg.info.width; ++j) {
+      uchar data = msg.data[i+j*msg.info.width];
+      if (data == -1) {
+        image.at<uchar>(i, j) = 128;
+      } else if (data < 51) {
+        image.at<uchar>(i, j) = std::round(data/51.*128.);
+      } else if (data >= 51) {
+        image.at<uchar>(i, j) = std::round((data-51) / 50. * 127. + 129.);
+      }
+    }
+  }
+  cv::imshow("debug", image);
+  cv::waitKey(0);
+  scan_matching::Map map_for_matcher{msg.info.resolution,
+    Eigen::Array2d(msg.info.origin.position.x, msg.info.origin.position.y),
+    image};
+  matcher_.SetMap(map_for_matcher);
 }
 
 void
@@ -773,6 +794,7 @@ AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 {
+  last_laser_msg = *laser_scan;
   std::string laser_scan_frame_id = stripSlash(laser_scan->header.frame_id);
   last_laser_received_ts_ = ros::Time::now();
   if( map_ == NULL ) {
@@ -1166,7 +1188,34 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 }
 
 void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg) {
-  handleInitialPoseMessage(*msg);
+  Eigen::Isometry2d transform{Eigen::Isometry2d::Identity()};
+  transform.rotate(tf2::getYaw(msg->pose.pose.orientation));
+  transform.translate(Eigen::Vector2d(msg->pose.pose.position.x, msg->pose.pose.position.y));
+  scan_matching::Scan scan;
+  scan.angle_properties = {last_laser_msg.angle_min, last_laser_msg.angle_max, last_laser_msg.angle_increment};
+  scan.range_properties = {last_laser_msg.range_min, last_laser_msg.range_max};
+  for (const auto& range : last_laser_msg.ranges) {
+    scan.ranges.push_back(range);
+  }
+  if (matcher_.StartRelocalization(scan, transform)) {
+    geometry_msgs::PoseWithCovarianceStamped new_msg;
+    new_msg.header = msg->header;
+    new_msg.pose.covariance = msg->pose.covariance;
+    new_msg.pose.pose.position.x = transform.translation().x();
+    new_msg.pose.pose.position.y = transform.translation().y();
+    new_msg.pose.pose.position.z = 0.;
+    const Eigen::Matrix2d rotation2d{transform.rotation()};
+    Eigen::Matrix3d rotation;
+    rotation << (Eigen::Matrix3d() << rotation2d(0,0), rotation2d(0,1), 0., rotation2d(1,0), rotation2d(1,1), 0., 0., 0., 1.).finished();
+    const Eigen::Quaterniond q{rotation};
+    new_msg.pose.pose.orientation.x = q.x();
+    new_msg.pose.pose.orientation.y = q.y();
+    new_msg.pose.pose.orientation.z = q.z();
+    new_msg.pose.pose.orientation.w = q.w();
+    handleInitialPoseMessage(new_msg);
+  } else {
+    handleInitialPoseMessage(*msg);
+  }
 }
 
 void
