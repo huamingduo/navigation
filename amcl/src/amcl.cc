@@ -613,24 +613,25 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   applyInitialPose();
 
   cv::Mat image{static_cast<int>(msg.info.height), static_cast<int>(msg.info.width), CV_8UC1};
-  for (int i=0; i<msg.info.height; ++i) {
-    for (int j=0; j<msg.info.width; ++j) {
-      uchar data = msg.data[i+j*msg.info.width];
+  for (int j=0; j<msg.info.width; ++j) {
+    for (int i=0; i<msg.info.height; ++i) {
+      const char data{msg.data[j+i*msg.info.width]};
       if (data == -1) {
         image.at<uchar>(i, j) = 128;
-      } else if (data < 51) {
-        image.at<uchar>(i, j) = std::round(data/51.*128.);
-      } else if (data >= 51) {
-        image.at<uchar>(i, j) = std::round((data-51) / 50. * 127. + 129.);
+      } else if (data < 51 && data >= 0) {
+        image.at<uchar>(i, j) = 255 - std::round(data/51.*128.);
+      } else if (data >= 51 && data <= 100) {
+        image.at<uchar>(i, j) = 255 - std::round((data-51) / 50. * 127. + 129.);
+      } else {
+        image.at<uchar>(i, j) = 0;
       }
     }
   }
-  cv::imshow("debug", image);
-  cv::waitKey(0);
   scan_matching::Map map_for_matcher{msg.info.resolution,
     Eigen::Array2d(msg.info.origin.position.x, msg.info.origin.position.y),
     image};
   matcher_.SetMap(map_for_matcher);
+  ROS_INFO("Set map for scan matcher");
 }
 
 void
@@ -794,7 +795,7 @@ AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 {
-  last_laser_msg = *laser_scan;
+  last_laser_msg_ = *laser_scan;
   std::string laser_scan_frame_id = stripSlash(laser_scan->header.frame_id);
   last_laser_received_ts_ = ros::Time::now();
   if( map_ == NULL ) {
@@ -1188,16 +1189,24 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 }
 
 void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg) {
+  if (last_laser_msg_.ranges.empty()) {
+    ROS_INFO("No laser message received, set intial pose as it is");
+    handleInitialPoseMessage(*msg);
+    return;
+  }
+  ROS_INFO("Converting scan message");
   Eigen::Isometry2d transform{Eigen::Isometry2d::Identity()};
+  transform.translate(Eigen::Vector2d(msg->pose.pose.position.x, msg->pose.pose.position.y)); 
   transform.rotate(tf2::getYaw(msg->pose.pose.orientation));
-  transform.translate(Eigen::Vector2d(msg->pose.pose.position.x, msg->pose.pose.position.y));
   scan_matching::Scan scan;
-  scan.angle_properties = {last_laser_msg.angle_min, last_laser_msg.angle_max, last_laser_msg.angle_increment};
-  scan.range_properties = {last_laser_msg.range_min, last_laser_msg.range_max};
-  for (const auto& range : last_laser_msg.ranges) {
+  scan.angle_properties = {last_laser_msg_.angle_min, last_laser_msg_.angle_max, last_laser_msg_.angle_increment};
+  scan.range_properties = {last_laser_msg_.range_min, last_laser_msg_.range_max};
+  for (const auto& range : last_laser_msg_.ranges) {
     scan.ranges.push_back(range);
   }
+  ROS_INFO("Start relocalization");
   if (matcher_.StartRelocalization(scan, transform)) {
+    ROS_INFO("Relocalize successfully, publishing it");
     geometry_msgs::PoseWithCovarianceStamped new_msg;
     new_msg.header = msg->header;
     new_msg.pose.covariance = msg->pose.covariance;
@@ -1214,6 +1223,7 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
     new_msg.pose.pose.orientation.w = q.w();
     handleInitialPoseMessage(new_msg);
   } else {
+    ROS_INFO("Relocalize failed");
     handleInitialPoseMessage(*msg);
   }
 }

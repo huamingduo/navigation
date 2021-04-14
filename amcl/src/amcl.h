@@ -263,7 +263,7 @@ class AmclNode {
     bool selective_resampling_;
 
     // custom add-ons
-    sensor_msgs::LaserScan last_laser_msg;
+    sensor_msgs::LaserScan last_laser_msg_;
     scan_matching::ScanMatcher matcher_;
 };
 

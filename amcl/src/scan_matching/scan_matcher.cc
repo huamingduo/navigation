@@ -169,6 +169,14 @@ bool ScanMatcher::EvaluateCandidate(Candidate& candidate) {
   const Map map{map_stack_[candidate.map_idx]};
   candidate.score = 0.;
   for (const auto& point : candidate.point_cloud.points) {
+    if (point.x() < 0 || point.x() >= map.shape.x()) {
+      candidate.score += 0.1;
+      continue;
+    }
+    if (point.y() < 0 || point.y() >= map.shape.y()) {
+      candidate.score += 0.1;
+      continue;
+    }
     const cv::Point pixel{point.x(), point.y()};
 //    if (map.data.at<uchar>(pixel) >= 110 && map.data.at<uchar>(pixel) <= 140) {
 //      continue;
@@ -190,9 +198,6 @@ bool ScanMatcher::EvaluateCandidate(Candidate& candidate) {
   candidate.score *= std::exp(-std::pow(
     1. * std::hypot(candidate.transform.translation().x(), candidate.transform.translation().y()) +
     1. * std::abs(angle),2));
-//  if (candidate.map_idx == 0) {
-//    candidate.score *= 2.;
-//  }
   return true;
 }
 
@@ -263,7 +268,11 @@ bool ScanMatcher::StartRelocalization(const Scan& scan, Eigen::Isometry2d& trans
   std::cout << "total time used: " << duration.count() << " seconds" << std::endl;
   std::cout << "with score: " << min_score << std::endl;
   std::cout << "=================================================================" << std::endl;
-  return true;
+  // if (min_score > option_.min_score) {
+    return true;
+  // } else {
+    // return false;
+  // }
 }
 
 void ScanMatcher::SetMap(const Map& map) {
@@ -293,6 +302,14 @@ void ScanMatcher::SetMap(const Map& map) {
       resolution, M_PI/2.*resolution));
   }
   std::reverse(search_params_.begin(), search_params_.end());
+
+#ifdef DEBUG
+  int idx{0};
+  for (const auto& item : map_stack_) {
+    cv::imwrite("/home/robot/base_line/map_" + std::to_string(idx) + ".png", item.data);
+    ++idx;
+  }
+#endif
 }
 
 } // namespace

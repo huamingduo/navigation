@@ -3,7 +3,7 @@
 #include <opencv2/opencv.hpp>
 #include <eigen3/Eigen/Eigen>
 
-//#define DEBUG
+#define DEBUG
 //#define ANIMATE
 
 namespace scan_matching {
