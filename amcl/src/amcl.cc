@@ -617,13 +617,13 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
     for (int i=0; i<msg.info.height; ++i) {
       const char data{msg.data[j+i*msg.info.width]};
       if (data == -1) {
-        image.at<uchar>(i, j) = 128;
+        image.at<uchar>(msg.info.height-i-1, j) = 128;
       } else if (data < 51 && data >= 0) {
-        image.at<uchar>(i, j) = 255 - std::round(data/51.*128.);
+        image.at<uchar>(msg.info.height-i-1, j) = 255 - std::round(data/51.*128.);
       } else if (data >= 51 && data <= 100) {
-        image.at<uchar>(i, j) = 255 - std::round((data-51) / 50. * 127. + 129.);
+        image.at<uchar>(msg.info.height-i-1, j) = 255 - std::round((data-51) / 50. * 127. + 129.);
       } else {
-        image.at<uchar>(i, j) = 0;
+        image.at<uchar>(msg.info.height-i-1, j) = 0;
       }
     }
   }
@@ -1221,6 +1221,10 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
     new_msg.pose.pose.orientation.y = q.y();
     new_msg.pose.pose.orientation.z = q.z();
     new_msg.pose.pose.orientation.w = q.w();
+    ROS_INFO("Original pose: (%f, %f, %f, %f, %f, %f, %f)", msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z,
+      msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+    ROS_INFO("Estimated pose: (%f, %f, %f, %f, %f, %f, %f)", new_msg.pose.pose.position.x, new_msg.pose.pose.position.y, new_msg.pose.pose.position.z,
+      new_msg.pose.pose.orientation.x, new_msg.pose.pose.orientation.y, new_msg.pose.pose.orientation.z, new_msg.pose.pose.orientation.w);
     handleInitialPoseMessage(new_msg);
   } else {
     ROS_INFO("Relocalize failed");

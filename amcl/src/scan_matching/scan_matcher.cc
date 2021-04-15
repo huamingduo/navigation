@@ -178,10 +178,6 @@ bool ScanMatcher::EvaluateCandidate(Candidate& candidate) {
       continue;
     }
     const cv::Point pixel{point.x(), point.y()};
-//    if (map.data.at<uchar>(pixel) >= 110 && map.data.at<uchar>(pixel) <= 140) {
-//      continue;
-//    }
-//    candidate.score += ((255.-map.data.at<uchar>(pixel)) / 255.);
     const auto value = map.data.at<uchar>(pixel);
     constexpr double scale{(0.9-0.1)/255.};
     if (value == 128) {
@@ -221,7 +217,7 @@ bool ScanMatcher::StartRelocalization(const Scan& scan, Eigen::Isometry2d& trans
 #ifdef DEBUG
   duration = std::chrono::steady_clock::now() - temp;
   temp = std::chrono::steady_clock::now();
-  std::cout << "time for generating initial candidates: " << duration.count()
+  std::cout << "generated " << candidates.size() << " initial candidates in " << duration.count()
     << " seconds" << std::endl;
   std::cout << "-----------------------------------------------------------------"
     << std::endl << std::endl;
@@ -230,8 +226,8 @@ bool ScanMatcher::StartRelocalization(const Scan& scan, Eigen::Isometry2d& trans
 #ifdef DEBUG
   duration = std::chrono::steady_clock::now() - temp;
   temp = std::chrono::steady_clock::now();
-  std::cout << "time for scoring initial candidates: " << duration.count()
-    << " seconds" << std::endl;
+  std::cout << "scored " << candidates.size() << " initial candidates in " << duration.count()
+    << " seconds, with maximum score of " << candidates.back().score << std::endl;
   std::cout << "-----------------------------------------------------------------"
     << std::endl << std::endl;
 #endif
@@ -241,14 +237,28 @@ bool ScanMatcher::StartRelocalization(const Scan& scan, Eigen::Isometry2d& trans
     Candidate current{candidates.back()};
     candidates.pop_back();
     if (current.score < min_score) {
-      continue;
+#ifdef DEBUG
+      std::cout << "current score " << current.score
+        << " is lower than min_score(" << min_score << "), stop loop at iteration "
+        << count << std::endl;
+      std::cout << "-----------------------------------------------------------------"
+        << std::endl << std::endl;
+      ++count;
+#endif
+      break;
     }
     if (current.map_idx == 0) {
       transform = current.transform;
       min_score = current.score;
+#ifdef DEBUG
+      ++count;
+#endif
       continue;
     }
     if (!GenerateCandidates(init_pc, current, candidates)) {
+#ifdef DEBUG
+      ++count;
+#endif
       continue;
     }
     ScoreCandidates(candidates);
@@ -265,14 +275,25 @@ bool ScanMatcher::StartRelocalization(const Scan& scan, Eigen::Isometry2d& trans
 #endif
   }
   duration = std::chrono::steady_clock::now() - start;
+  std::cout << "final estimate result: " << std::endl << transform.matrix() << std::endl;
   std::cout << "total time used: " << duration.count() << " seconds" << std::endl;
   std::cout << "with score: " << min_score << std::endl;
   std::cout << "=================================================================" << std::endl;
-  // if (min_score > option_.min_score) {
-    return true;
-  // } else {
-    // return false;
-  // }
+
+#ifdef DEBUG
+  const PointCloud pc_for_show = TransformPointCloud(transform, init_pc);
+  const Map map_for_show{map_stack_.front()};
+  cv::Mat image_for_show;
+  map_for_show.data.copyTo(image_for_show);
+  for (const auto& point : pc_for_show.points) {
+    const int x{static_cast<int>(std::round((point.x() - map_for_show.origin.x()) / map_for_show.resolution))};
+    const int y{static_cast<int>(std::round((point.y() - map_for_show.origin.y()) / map_for_show.resolution))};
+    cv::circle(image_for_show, cv::Point(x, map_for_show.shape.y() - y), 2, cv::Scalar(0,0,255), -1);
+  }
+  cv::imwrite("/home/robot/base_line/result.png", image_for_show);
+#endif
+
+  return min_score > option_.min_score;
 }
 
 void ScanMatcher::SetMap(const Map& map) {
