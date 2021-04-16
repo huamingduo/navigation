@@ -612,21 +612,25 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   // try to apply the initial pose now that the map has arrived.
   applyInitialPose();
 
+  // for cv::Mat, width lies in the x-axis, while height lies in the y-axis
+  // for nav_msgs::OccupancyGrid, the same, but the directions are different
   cv::Mat image{static_cast<int>(msg.info.height), static_cast<int>(msg.info.width), CV_8UC1};
-  for (int j=0; j<msg.info.width; ++j) {
-    for (int i=0; i<msg.info.height; ++i) {
-      const char data{msg.data[j+i*msg.info.width]};
+  // cell(i, j) in OccupancyGrid
+  for (int j=0; j<msg.info.height; ++j) {
+    for (int i=0; i<msg.info.width; ++i) {
+      const char data{msg.data[i+j*msg.info.width]};
       if (data == -1) {
-        image.at<uchar>(msg.info.height-i-1, j) = 128;
+        image.at<uchar>(msg.info.height-j-1, i) = 128;
       } else if (data < 51 && data >= 0) {
-        image.at<uchar>(msg.info.height-i-1, j) = 255 - std::round(data/51.*128.);
+        image.at<uchar>(msg.info.height-j-1, i) = 255 - std::round(data/51.*128.);
       } else if (data >= 51 && data <= 100) {
-        image.at<uchar>(msg.info.height-i-1, j) = 255 - std::round((data-51) / 50. * 127. + 129.);
+        image.at<uchar>(msg.info.height-j-1, i) = 255 - std::round((data-51) / 50. * 127. + 129.);
       } else {
-        image.at<uchar>(msg.info.height-i-1, j) = 0;
+        image.at<uchar>(msg.info.height-j-1, i) = 0;
       }
     }
   }
+  cv::imwrite("/home/robot/base_line/input.png", image);
   scan_matching::Map map_for_matcher{msg.info.resolution,
     Eigen::Array2d(msg.info.origin.position.x, msg.info.origin.position.y),
     image};
@@ -1207,9 +1211,16 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
   ROS_INFO("Start relocalization");
   if (matcher_.StartRelocalization(scan, transform)) {
     ROS_INFO("Relocalize successfully, publishing it");
+    Eigen::Isometry2d laser_to_base{Eigen::Isometry2d::Identity()};
+    laser_to_base.translate(Eigen::Vector2d(-0.25, 0));
+    transform = transform * laser_to_base;
     geometry_msgs::PoseWithCovarianceStamped new_msg;
-    new_msg.header = msg->header;
-    new_msg.pose.covariance = msg->pose.covariance;
+    new_msg.header.stamp = ros::Time::now();
+    new_msg.header.frame_id = "map";
+    const double variance{1e-3};
+    new_msg.pose.covariance = {variance, 0., 0., 0., 0., 0., 0., variance, 0., 0., 0., 0.,
+                               0., 0., variance, 0., 0., 0., 0., 0., 0., variance, 0., 0.,
+                               0., 0., 0., 0., variance, 0., 0., 0., 0., 0., 0., variance};
     new_msg.pose.pose.position.x = transform.translation().x();
     new_msg.pose.pose.position.y = transform.translation().y();
     new_msg.pose.pose.position.z = 0.;
