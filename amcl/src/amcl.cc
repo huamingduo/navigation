@@ -1217,7 +1217,7 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
     geometry_msgs::PoseWithCovarianceStamped new_msg;
     new_msg.header.stamp = ros::Time::now();
     new_msg.header.frame_id = "map";
-    const double variance{1e-3};
+    const double variance{1e-2};
     new_msg.pose.covariance = {variance, 0., 0., 0., 0., 0., 0., variance, 0., 0., 0., 0.,
                                0., 0., variance, 0., 0., 0., 0., 0., 0., variance, 0., 0.,
                                0., 0., 0., 0., variance, 0., 0., 0., 0., 0., 0., variance};
@@ -1232,10 +1232,6 @@ void AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampe
     new_msg.pose.pose.orientation.y = q.y();
     new_msg.pose.pose.orientation.z = q.z();
     new_msg.pose.pose.orientation.w = q.w();
-    ROS_INFO("Original pose: (%f, %f, %f, %f, %f, %f, %f)", msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z,
-      msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
-    ROS_INFO("Estimated pose: (%f, %f, %f, %f, %f, %f, %f)", new_msg.pose.pose.position.x, new_msg.pose.pose.position.y, new_msg.pose.pose.position.z,
-      new_msg.pose.pose.orientation.x, new_msg.pose.pose.orientation.y, new_msg.pose.pose.orientation.z, new_msg.pose.pose.orientation.w);
     handleInitialPoseMessage(new_msg);
   } else {
     ROS_INFO("Relocalize failed");

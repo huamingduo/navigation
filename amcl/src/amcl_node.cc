@@ -11,9 +11,9 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh;
 
   scan_matching::Option option;
-  option.map_stack_depth = 4;
+  option.map_stack_depth = 3;
   option.min_score = 0.5;
-  option.linear_search_window = 2.;
+  option.linear_search_window = 1.;
   option.angular_search_window = M_PI;
   option.shrink_scale = 0.5;
   option.kernal_size = 3;

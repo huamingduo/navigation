@@ -3,7 +3,7 @@
 #include <opencv2/opencv.hpp>
 #include <eigen3/Eigen/Eigen>
 
-#define DEBUG
+//#define DEBUG
 //#define ANIMATE
 
 namespace scan_matching {
@@ -32,21 +32,11 @@ struct SearchParam {
 struct Map {
   double resolution;
   Eigen::Array2d origin;
-//  std::vector<uint8_t> data;
   cv::Mat data;
   Eigen::Array2i shape;
 
   Map(const double& reso, const Eigen::Array2d& ori, const cv::Mat& map) 
   : resolution(reso), origin(ori), data(map), shape(data.cols, data.rows) {}
-
-//  uint32_t GetFlatIndex(const Eigen::Array2d& coord) {
-//    Eigen::Array2d xy_index{(coord - origin) / resolution};
-//    return static_cast<uint32_t>(std::round(xy_index.x() + xy_index.y() * shape.y()));
-//  }
-//  uint8_t GetOccupancyValue(const Eigen::Array2d& coord) {
-//    // TODO: have to check if the index exceeds the limits
-//    return data[GetFlatIndex(coord)];
-//  }
 };
 
 struct Scan {
@@ -83,21 +73,16 @@ PointCloud TransformPointCloud(const Eigen::Isometry2d& transform, const PointCl
 class ScanMatcher {
   public:
     ScanMatcher(const Option& option);
-    ScanMatcher(const Map& map, const Option& option);
     ~ScanMatcher() {}
 
     void SetMap(const Map& map);
     bool StartRelocalization(const Scan& scan, Eigen::Isometry2d& transform);
 
   private:
-    bool GenerateInitialCandidates(const PointCloud& pc, const Eigen::Isometry2d& transform,
-      std::vector<Candidate>& candidates);
-    bool GenerateCandidates(const PointCloud& pc, const Candidate& candidate,
-      std::vector<Candidate>& candidates);
-    bool ScoreCandidates(std::vector<Candidate>& candidates);
-    bool EvaluateCandidate(Candidate& candidate);
-
+    bool GenerateCandidates(const PointCloud& pc, const Candidate& candidate);
+    double ScoreCandidates(Eigen::Isometry2d& transform);
     DiscretizedPointCloud DiscretizePointCloud(const PointCloud& pc, const int& map_idx) const;
+    double EvaluateCandidate(const DiscretizedPointCloud& pc) const;
     
   private:
     const Option option_;
